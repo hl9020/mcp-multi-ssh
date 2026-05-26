@@ -1,8 +1,12 @@
 {
   "name": "mcp-multi-ssh",
   "version": "1.0.7",
-  "description": "MCP server for multi-host SSH connections — manage and execute commands on multiple remote servers",
+  "description": "MCP server for multi-host SSH connections - manage and execute commands on multiple remote servers",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hl9020/mcp-multi-ssh.git"
+  },
   "bin": {
     "mcp-multi-ssh": "./dist/index.js"
   },
