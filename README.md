@@ -6,13 +6,13 @@ Built for use with [Claude Desktop](https://claude.ai/download) and other MCP-co
 
 ## Features
 
-- **Multi-host SSH** — configure and manage multiple server connections
-- **Connection pooling** — automatic reconnect, keepalive, concurrent sessions
-- **CRUD for connections** — create, read, update, delete connections at runtime
-- **Auth validation** — requires password or private key, prevents invalid configs
-- **Command history** — tracks executed commands with timestamps and exit codes
-- **Password masking** — sensitive data never exposed in tool responses
-- **Minimal footprint** — ~500 lines, SSH-only, no bloat
+- **Multi-host SSH** - configure and manage multiple server connections
+- **Connection pooling** - automatic reconnect, keepalive, concurrent sessions
+- **CRUD for connections** - create, read, update, delete connections at runtime
+- **Auth validation** - requires password or private key, prevents invalid configs
+- **Command history** - tracks executed commands with timestamps and exit codes
+- **Password masking** - sensitive data never exposed in tool responses
+- **Minimal footprint** - ~500 lines, SSH-only, no bloat
 
 ## Installation
 
@@ -172,7 +172,8 @@ Config file is loaded from (in order):
         "host": "example.com",
         "port": 22,
         "username": "deploy",
-        "privateKeyPath": "/home/user/.ssh/id_rsa"
+        "privateKeyPath": "/home/user/.ssh/id_rsa",
+        "passphrase": "key-passphrase-if-encrypted"
       },
       "db-server": {
         "host": "10.0.0.5",
@@ -217,16 +218,19 @@ Each connection requires:
 | `port` | yes | SSH port |
 | `username` | yes | SSH username |
 | `password` | one of | Password authentication |
-| `privateKeyPath` | one of | Path to private key file |
+| `privateKeyPath` | one of | Path to private key file (OpenSSH/PEM format) |
+| `passphrase` | no | Passphrase for an encrypted private key |
 | `keepaliveInterval` | no | Override global keepalive (ms) |
 | `keepaliveCountMax` | no | Override max failed keepalives |
 | `readyTimeout` | no | Override connection timeout (ms) |
 
 At least `password` or `privateKeyPath` must be provided.
 
+Private keys must be in OpenSSH/PEM format. PuTTY `.ppk` files are not supported - convert them first via PuTTYgen (`Conversions -> Export OpenSSH key`).
+
 ## Background
 
-This project started as a fork of [win-cli-mcp-server](https://github.com/SimonB97/win-cli-mcp-server) (now archived/deprecated). It has been rebuilt as a focused SSH-only MCP server — all Windows CLI functionality was removed, bugs were fixed, and the codebase was reduced by over 50%.
+This project started as a fork of [win-cli-mcp-server](https://github.com/SimonB97/win-cli-mcp-server) (now archived/deprecated). It has been rebuilt as a focused SSH-only MCP server - all Windows CLI functionality was removed, bugs were fixed, and the codebase was reduced by over 50%.
 
 ## License
 
