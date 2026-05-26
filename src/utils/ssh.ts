@@ -1,9 +1,11 @@
-import { Client } from 'ssh2';
+import ssh2 from 'ssh2';
+import type { Client as ClientType } from 'ssh2';
+const { Client, utils: sshUtils } = ssh2;
 import { SSHConnectionConfig } from '../types/config.js';
 import fs from 'fs/promises';
 
 export class SSHConnection {
-  private client: Client | null = null;
+  private client: ClientType | null = null;
   private config: SSHConnectionConfig;
   private isConnected: boolean = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -55,7 +57,13 @@ export class SSHConnection {
     };
 
     if (this.config.privateKeyPath) {
-      cfg.privateKey = await fs.readFile(this.config.privateKeyPath, 'utf8');
+      const keyData = await fs.readFile(this.config.privateKeyPath, 'utf8');
+      const parsed = sshUtils.parseKey(keyData, this.config.passphrase);
+      if (parsed instanceof Error) {
+        throw new Error(`Failed to parse key '${this.config.privateKeyPath}': ${parsed.message}`);
+      }
+      cfg.privateKey = keyData;
+      if (this.config.passphrase) cfg.passphrase = this.config.passphrase;
     } else if (this.config.password) {
       cfg.password = this.config.password;
     } else {
