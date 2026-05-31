@@ -180,8 +180,14 @@ export class MCPSSHServer {
           }
 
           case "read_ssh_connections": {
+            const mask = (v?: string) => v ? '********' : undefined;
             const safe = Object.fromEntries(
-              Object.entries(this.config.ssh.connections).map(([id, c]) => [id, { ...c, password: c.password ? '********' : undefined }])
+              Object.entries(this.config.ssh.connections).map(([id, c]) => [id, {
+                ...c,
+                password: mask(c.password),
+                privateKey: mask(c.privateKey),
+                passphrase: mask(c.passphrase),
+              }])
             );
             return { content: [{ type: "text", text: JSON.stringify(safe, null, 2) }] };
           }

@@ -196,6 +196,51 @@ To generate a default config:
 npx mcp-multi-ssh --init-config ~/.mcp-multi-ssh/config.json
 ```
 
+## Remote HTTP Server (Docker / Dokploy)
+
+In addition to stdio, the server can run as a remote MCP over Streamable HTTP - reachable as a custom connector from Claude web/mobile. Start it with `npm run start:http` (or `node dist/http.js`), or build the included `Dockerfile`.
+
+In HTTP mode the connection config comes from environment variables (not a config file), and the write tools (`create`/`update`/`delete_ssh_connection`) are disabled - the server is read/execute only.
+
+### Environment variables
+
+| Var | Required | Description |
+|---|---|---|
+| `MCP_AUTH_TOKEN` | yes | Bearer token clients must send in the `Authorization` header |
+| `PORT` | no | Listen port (default 3000) |
+| `MCP_PATH` | no | Endpoint path (default `/mcp`) |
+| `MCP_ENABLED` | no | Set to `false` to refuse startup (kill switch) |
+| `SSH_TIMEOUT` | no | Command timeout in seconds (default 60) |
+| `SSH_CONNECTIONS` | one of | All connections as a single JSON object (format A) |
+| `SSH_<ID>_*` | one of | Per-server vars (format B, see below) |
+
+If `SSH_CONNECTIONS` is set it takes precedence; otherwise the `SSH_<ID>_*` vars are collected.
+
+**Format A** - one JSON var:
+
+```
+SSH_CONNECTIONS={"web1":{"host":"1.2.3.4","port":22,"username":"root","password":"secret"}}
+```
+
+**Format B** - per-server vars, no JSON escaping. The middle segment becomes the (lowercased) connection ID, so `SSH_WEB1_HOST` -> connection `web1`:
+
+```
+SSH_WEB1_HOST=1.2.3.4
+SSH_WEB1_PORT=22          # optional, defaults to 22
+SSH_WEB1_USER=root
+SSH_WEB1_PASSWORD=secret  # or SSH_WEB1_KEY_B64
+```
+
+For key auth, base64-encode the OpenSSH key file (avoids newline escaping) and pass it as `SSH_<ID>_KEY_B64`, with optional `SSH_<ID>_PASSPHRASE`. The helper script does the encoding on any platform with Node:
+
+```bash
+node tools/key2env.mjs /path/to/id_ed25519 web1
+```
+
+### Auth
+
+Clients authenticate with a bearer token. The endpoint returns `401` without a valid `Authorization: Bearer <MCP_AUTH_TOKEN>` header. A `GET /health` endpoint (no auth) reports status and connection count. Since the endpoint is public, pair the token with a network allowlist (e.g. restrict to your MCP client's egress ranges) and a least-privilege SSH user where possible.
+
 ## Tools
 
 | Tool | Description |
@@ -219,6 +264,7 @@ Each connection requires:
 | `username` | yes | SSH username |
 | `password` | one of | Password authentication |
 | `privateKeyPath` | one of | Path to private key file (OpenSSH/PEM format) |
+| `privateKey` | one of | Private key content directly (OpenSSH/PEM); used by HTTP mode |
 | `passphrase` | no | Passphrase for an encrypted private key |
 | `keepaliveInterval` | no | Override global keepalive (ms) |
 | `keepaliveCountMax` | no | Override max failed keepalives |

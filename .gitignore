@@ -4,6 +4,9 @@ dist/
 .DS_Store
 *.log
 config.json
+*.key
+*.pem
+*_tmp
 .cursorrules
 .history
 CLAUDE.md

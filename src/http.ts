@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { loadConfigFromEnv } from './utils/config.js';
 import { MCPSSHServer } from './server.js';
 
@@ -14,7 +12,6 @@ if (!AUTH_TOKEN) { console.error('Fatal: MCP_AUTH_TOKEN env var required'); proc
 if (process.env.MCP_ENABLED === 'false') { console.error('Fatal: MCP_ENABLED=false'); process.exit(1); }
 
 const config = loadConfigFromEnv();
-const transports = new Map<string, StreamableHTTPServerTransport>();
 
 function unauthorized(res: any) {
   res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -51,51 +48,32 @@ const httpServer = createServer(async (req, res) => {
 
   if (!checkAuth(req)) return unauthorized(res);
 
-  try {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
-
-    if (req.method === 'POST') {
-      const body = await readBody(req);
-      let transport = sessionId ? transports.get(sessionId) : undefined;
-
-      if (!transport && isInitializeRequest(body)) {
-        transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sid) => { transports.set(sid, transport!); }
-        });
-        transport.onclose = () => { if (transport!.sessionId) transports.delete(transport!.sessionId); };
-        const mcp = new MCPSSHServer(config, { readonly: true });
-        await mcp.server.connect(transport);
-      }
-
-      if (!transport) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'No valid session' }, id: null }));
-        return;
-      }
+  // Stateless: each POST gets a fresh transport + server, no session state.
+  // Survives redeploys without client restart. GET/DELETE (SSE streams) not used.
+  if (req.method === 'POST') {
+    const body = await readBody(req);
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const mcp = new MCPSSHServer(config, { readonly: true });
+    res.on('close', () => { transport.close(); mcp.closePool(); });
+    try {
+      await mcp.server.connect(transport);
       await transport.handleRequest(req, res, body);
-      return;
+    } catch (e) {
+      console.error('Request error:', e);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null }));
+      }
     }
-
-    if (req.method === 'GET' || req.method === 'DELETE') {
-      const transport = sessionId ? transports.get(sessionId) : undefined;
-      if (!transport) { res.writeHead(400).end('Invalid session'); return; }
-      await transport.handleRequest(req, res);
-      return;
-    }
-
-    res.writeHead(405).end();
-  } catch (e) {
-    console.error('Request error:', e);
-    if (!res.headersSent) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null }));
-    }
+    return;
   }
+
+  res.writeHead(405, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed in stateless mode' }, id: null }));
 });
 
 httpServer.listen(PORT, () => {
-  console.error(`mcp-multi-ssh HTTP listening on :${PORT}${MCP_PATH} (readonly, ${Object.keys(config.ssh.connections).length} connections)`);
+  console.error(`mcp-multi-ssh HTTP listening on :${PORT}${MCP_PATH} (stateless, readonly, ${Object.keys(config.ssh.connections).length} connections)`);
 });
 
 process.on('SIGINT', () => { httpServer.close(); process.exit(0); });
