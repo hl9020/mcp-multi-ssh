@@ -26,6 +26,27 @@ export const DEFAULT_CONFIG: ServerConfig = {
   }
 };
 
+export function loadConfigFromEnv(): ServerConfig {
+  const raw = process.env.SSH_CONNECTIONS;
+  if (!raw) throw new Error('SSH_CONNECTIONS env var required (JSON object of connectionId -> config)');
+  let connections: Record<string, any>;
+  try {
+    connections = JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`SSH_CONNECTIONS is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const config: ServerConfig = {
+    ssh: {
+      ...DEFAULT_CONFIG.ssh,
+      defaultTimeout: process.env.SSH_TIMEOUT ? Number(process.env.SSH_TIMEOUT) : DEFAULT_CONFIG.ssh.defaultTimeout,
+      connections
+    },
+    logging: { ...DEFAULT_CONFIG.logging }
+  };
+  validateConfig(config);
+  return config;
+}
+
 export function loadConfig(configPath?: string): ServerConfig {
   const locations = [
     configPath,
@@ -68,7 +89,7 @@ function validateConfig(config: ServerConfig) {
       invalid.push(id);
       continue;
     }
-    if (!conn.host || !conn.username || (!conn.password && !conn.privateKeyPath)) {
+    if (!conn.host || !conn.username || (!conn.password && !conn.privateKeyPath && !conn.privateKey)) {
       console.error(`Warning: Skipping invalid SSH connection '${id}': missing host, username, or auth`);
       invalid.push(id);
       continue;

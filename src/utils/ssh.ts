@@ -56,7 +56,12 @@ export class SSHConnection {
       readyTimeout: this.config.readyTimeout || 20000,
     };
 
-    if (this.config.privateKeyPath) {
+    if (this.config.privateKey) {
+      const parsed = sshUtils.parseKey(this.config.privateKey, this.config.passphrase);
+      if (parsed instanceof Error) throw new Error(`Failed to parse inline privateKey: ${parsed.message}`);
+      cfg.privateKey = this.config.privateKey;
+      if (this.config.passphrase) cfg.passphrase = this.config.passphrase;
+    } else if (this.config.privateKeyPath) {
       const keyData = await fs.readFile(this.config.privateKeyPath, 'utf8');
       const parsed = sshUtils.parseKey(keyData, this.config.passphrase);
       if (parsed instanceof Error) {

@@ -3,6 +3,7 @@ export interface SSHConnectionConfig {
   port: number;
   username: string;
   privateKeyPath?: string;
+  privateKey?: string;
   passphrase?: string;
   password?: string;
   keepaliveInterval?: number;
