@@ -42,11 +42,11 @@ export class MCPSSHServer {
     const allTools = [
       {
         name: "ssh_execute",
-        description: "Execute a command on a remote host via SSH",
+        description: "Execute a command on a remote host via SSH. connectionId accepts ANY configured connection (not just the first one); call read_ssh_connections to list all available connection IDs.",
         inputSchema: {
           type: "object",
           properties: {
-            connectionId: { type: "string", description: "SSH connection ID", enum: Object.keys(this.config.ssh.connections) },
+            connectionId: { type: "string", description: "SSH connection ID. Any configured connection is valid; the enum lists all available IDs. Use read_ssh_connections to see them.", enum: Object.keys(this.config.ssh.connections) },
             command: { type: "string", description: "Command to execute" }
           },
           required: ["connectionId", "command"]
@@ -139,7 +139,7 @@ export class MCPSSHServer {
             }).parse(req.params.arguments);
 
             const connCfg = this.config.ssh.connections[connectionId];
-            if (!connCfg) throw new McpError(ErrorCode.InvalidRequest, `Unknown connection: ${connectionId}`);
+            if (!connCfg) throw new McpError(ErrorCode.InvalidRequest, `Unknown connection: ${connectionId}. Available: ${Object.keys(this.config.ssh.connections).join(', ')}`);
 
             try {
               const conn = await this.pool.get(connectionId, connCfg);
