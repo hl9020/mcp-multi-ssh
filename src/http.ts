@@ -68,18 +68,18 @@ const httpServer = createServer(async (req, res) => {
   // Stateless: each POST gets a fresh transport + server, no session state.
   // Survives redeploys without client restart. GET/DELETE (SSE streams) not used.
   if (req.method === 'POST') {
-    const body = await readBody(req);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     const mcp = new MCPSSHServer(config, { readonly: true });
     res.on('close', () => { transport.close(); mcp.closePool(); });
     try {
+      const body = await readBody(req);
       await mcp.server.connect(transport);
       await transport.handleRequest(req, res, body);
     } catch (e) {
       console.error('Request error:', e);
       if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null }));
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null }));
       }
     }
     return;
