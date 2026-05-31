@@ -3,18 +3,30 @@ import { createServer } from 'node:http';
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { loadConfigFromEnv } from './utils/config.js';
 import { MCPSSHServer } from './server.js';
+import { handleOAuth, isValidToken } from './oauth.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
 const MCP_PATH = process.env.MCP_PATH || '/mcp';
+const PUBLIC_URL = process.env.PUBLIC_URL || '';
 
 if (!AUTH_TOKEN) { console.error('Fatal: MCP_AUTH_TOKEN env var required'); process.exit(1); }
 if (process.env.MCP_ENABLED === 'false') { console.error('Fatal: MCP_ENABLED=false'); process.exit(1); }
 
 const config = loadConfigFromEnv();
 
-function unauthorized(res: any) {
-  res.writeHead(401, { 'Content-Type': 'application/json' });
+function baseUrlFrom(req: any): string {
+  if (PUBLIC_URL) return PUBLIC_URL.replace(/\/$/, '');
+  const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers['host'] || 'localhost';
+  return `${proto}://${host}`;
+}
+
+function unauthorized(res: any, baseUrl: string) {
+  res.writeHead(401, {
+    'Content-Type': 'application/json',
+    'WWW-Authenticate': `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`,
+  });
   res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized' }, id: null }));
 }
 
@@ -22,7 +34,8 @@ function checkAuth(req: any): boolean {
   const h = req.headers['authorization'];
   if (!h || typeof h !== 'string') return false;
   const token = h.startsWith('Bearer ') ? h.slice(7) : h;
-  return token === AUTH_TOKEN;
+  if (token === AUTH_TOKEN) return true;
+  return isValidToken(token);
 }
 
 async function readBody(req: any): Promise<any> {
@@ -34,6 +47,7 @@ async function readBody(req: any): Promise<any> {
 
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://localhost`);
+  const baseUrl = baseUrlFrom(req);
 
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -41,12 +55,14 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+  if (await handleOAuth(req, res, url, baseUrl, AUTH_TOKEN!)) return;
+
   if (url.pathname !== MCP_PATH) {
     res.writeHead(404).end();
     return;
   }
 
-  if (!checkAuth(req)) return unauthorized(res);
+  if (!checkAuth(req)) return unauthorized(res, baseUrl);
 
   // Stateless: each POST gets a fresh transport + server, no session state.
   // Survives redeploys without client restart. GET/DELETE (SSE streams) not used.
@@ -73,7 +89,7 @@ const httpServer = createServer(async (req, res) => {
 });
 
 httpServer.listen(PORT, () => {
-  console.error(`mcp-multi-ssh HTTP listening on :${PORT}${MCP_PATH} (stateless, readonly, ${Object.keys(config.ssh.connections).length} connections)`);
+  console.error(`mcp-multi-ssh HTTP listening on :${PORT}${MCP_PATH} (stateless, readonly, oauth+bearer, ${Object.keys(config.ssh.connections).length} connections)`);
 });
 
 process.on('SIGINT', () => { httpServer.close(); process.exit(0); });
