@@ -108,6 +108,38 @@ export class SSHConnection {
     });
   }
 
+  async writeFile(remotePath: string, data: Buffer): Promise<void> {
+    this.lastActivity = Date.now();
+    if (!this.isConnected || !this.client) await this.connect();
+    const client = this.client!;
+    return new Promise((resolve, reject) => {
+      client.sftp((err, sftp) => {
+        if (err) return reject(err);
+        sftp.writeFile(remotePath, data, (e) => {
+          this.lastActivity = Date.now();
+          if (e) return reject(e);
+          resolve();
+        });
+      });
+    });
+  }
+
+  async readFile(remotePath: string): Promise<Buffer> {
+    this.lastActivity = Date.now();
+    if (!this.isConnected || !this.client) await this.connect();
+    const client = this.client!;
+    return new Promise((resolve, reject) => {
+      client.sftp((err, sftp) => {
+        if (err) return reject(err);
+        sftp.readFile(remotePath, (e, data) => {
+          this.lastActivity = Date.now();
+          if (e) return reject(e);
+          resolve(data);
+        });
+      });
+    });
+  }
+
   disconnect() {
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     if (this.client) { this.client.removeAllListeners(); this.client.end(); this.client = null; }

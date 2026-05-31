@@ -61,6 +61,33 @@ export class MCPSSHServer {
         }
       },
       {
+        name: "sftp_write_file",
+        description: "Write a file to a remote host via SFTP (stream-based, no shell). Use this for large or multi-line files where shell heredoc/echo would break on escaping or size limits. For text pass plain content; for binary set encoding to 'base64'.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            connectionId: { type: "string", description: "SSH connection ID", enum: Object.keys(this.config.ssh.connections) },
+            remotePath: { type: "string", description: "Absolute remote file path" },
+            content: { type: "string", description: "File content" },
+            encoding: { type: "string", description: "Content encoding: 'utf8' (default) or 'base64' for binary", enum: ["utf8", "base64"] }
+          },
+          required: ["connectionId", "remotePath", "content"]
+        }
+      },
+      {
+        name: "sftp_read_file",
+        description: "Read a file from a remote host via SFTP. Returns text by default; set encoding 'base64' for binary files.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            connectionId: { type: "string", description: "SSH connection ID", enum: Object.keys(this.config.ssh.connections) },
+            remotePath: { type: "string", description: "Absolute remote file path" },
+            encoding: { type: "string", description: "Output encoding: 'utf8' (default) or 'base64' for binary", enum: ["utf8", "base64"] }
+          },
+          required: ["connectionId", "remotePath"]
+        }
+      },
+      {
         name: "ssh_disconnect",
         description: "Disconnect an SSH session",
         inputSchema: {
@@ -161,6 +188,45 @@ export class MCPSSHServer {
               const msg = e instanceof Error ? e.message : String(e);
               this.log({ command, output: `SSH error: ${msg}`, exitCode: -1, connectionId });
               throw new McpError(ErrorCode.InternalError, `SSH error: ${msg}`);
+            }
+          }
+
+          case "sftp_write_file": {
+            const { connectionId, remotePath, content, encoding } = z.object({
+              connectionId: z.string(), remotePath: z.string(), content: z.string(),
+              encoding: z.enum(["utf8", "base64"]).optional().default("utf8")
+            }).parse(req.params.arguments);
+            const connCfg = this.config.ssh.connections[connectionId];
+            if (!connCfg) throw new McpError(ErrorCode.InvalidRequest, `Unknown connection: ${connectionId}. Available: ${Object.keys(this.config.ssh.connections).join(', ')}`);
+            try {
+              const conn = await this.pool.get(connectionId, connCfg);
+              const buf = Buffer.from(content, encoding);
+              await conn.writeFile(remotePath, buf);
+              this.log({ command: `sftp_write ${remotePath} (${buf.length} bytes)`, output: 'ok', exitCode: 0, connectionId });
+              return { content: [{ type: "text", text: `Wrote ${buf.length} bytes to ${remotePath}` }] };
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              this.log({ command: `sftp_write ${remotePath}`, output: `SFTP error: ${msg}`, exitCode: -1, connectionId });
+              throw new McpError(ErrorCode.InternalError, `SFTP error: ${msg}`);
+            }
+          }
+
+          case "sftp_read_file": {
+            const { connectionId, remotePath, encoding } = z.object({
+              connectionId: z.string(), remotePath: z.string(),
+              encoding: z.enum(["utf8", "base64"]).optional().default("utf8")
+            }).parse(req.params.arguments);
+            const connCfg = this.config.ssh.connections[connectionId];
+            if (!connCfg) throw new McpError(ErrorCode.InvalidRequest, `Unknown connection: ${connectionId}. Available: ${Object.keys(this.config.ssh.connections).join(', ')}`);
+            try {
+              const conn = await this.pool.get(connectionId, connCfg);
+              const buf = await conn.readFile(remotePath);
+              this.log({ command: `sftp_read ${remotePath} (${buf.length} bytes)`, output: 'ok', exitCode: 0, connectionId });
+              return { content: [{ type: "text", text: buf.toString(encoding) }] };
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              this.log({ command: `sftp_read ${remotePath}`, output: `SFTP error: ${msg}`, exitCode: -1, connectionId });
+              throw new McpError(ErrorCode.InternalError, `SFTP error: ${msg}`);
             }
           }
 
