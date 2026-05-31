@@ -26,14 +26,42 @@ export const DEFAULT_CONFIG: ServerConfig = {
   }
 };
 
+function connectionsFromPrefixedEnv(): Record<string, any> {
+  const acc: Record<string, any> = {};
+  const re = /^SSH_(.+)_(HOST|PORT|USER|PASSWORD|KEY_B64|PASSPHRASE)$/;
+  for (const [key, val] of Object.entries(process.env)) {
+    if (!val) continue;
+    const m = key.match(re);
+    if (!m) continue;
+    const id = m[1].toLowerCase();
+    const field = m[2];
+    const c = acc[id] ??= {};
+    switch (field) {
+      case 'HOST': c.host = val; break;
+      case 'PORT': c.port = Number(val); break;
+      case 'USER': c.username = val; break;
+      case 'PASSWORD': c.password = val; break;
+      case 'PASSPHRASE': c.passphrase = val; break;
+      case 'KEY_B64': c.privateKey = Buffer.from(val, 'base64').toString('utf8'); break;
+    }
+  }
+  for (const c of Object.values(acc)) if (c.port === undefined) c.port = 22;
+  return acc;
+}
+
 export function loadConfigFromEnv(): ServerConfig {
   const raw = process.env.SSH_CONNECTIONS;
-  if (!raw) throw new Error('SSH_CONNECTIONS env var required (JSON object of connectionId -> config)');
   let connections: Record<string, any>;
-  try {
-    connections = JSON.parse(raw);
-  } catch (e) {
-    throw new Error(`SSH_CONNECTIONS is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+  if (raw) {
+    try {
+      connections = JSON.parse(raw);
+    } catch (e) {
+      throw new Error(`SSH_CONNECTIONS is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  } else {
+    connections = connectionsFromPrefixedEnv();
+    if (Object.keys(connections).length === 0)
+      throw new Error('No connections: set SSH_CONNECTIONS (JSON) or SSH_<ID>_HOST/_USER/... env vars');
   }
   const config: ServerConfig = {
     ssh: {
