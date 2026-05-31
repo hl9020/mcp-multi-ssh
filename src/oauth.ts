@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 interface Client { client_id: string; redirect_uris: string[]; }
@@ -6,7 +6,6 @@ interface AuthCode { client_id: string; redirect_uri: string; challenge: string;
 
 const clients = new Map<string, Client>();
 const codes = new Map<string, AuthCode>();
-const tokens = new Set<string>();
 
 const b64url = (b: Buffer) => b.toString('base64url');
 const rand = () => b64url(randomBytes(32));
@@ -17,7 +16,23 @@ function safeEq(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
-export function isValidToken(t: string): boolean { return tokens.has(t); }
+// Stateless tokens: HMAC-signed, survive redeploys. Secret = MCP_AUTH_TOKEN (env, persistent).
+let signKey = '';
+export function initTokenSecret(secret: string) { signKey = secret; }
+
+function signToken(): string {
+  const payload = b64url(Buffer.from(JSON.stringify({ iat: Date.now(), jti: rand() })));
+  const sig = b64url(createHmac('sha256', signKey).update(payload).digest());
+  return `${payload}.${sig}`;
+}
+
+export function isValidToken(t: string): boolean {
+  const dot = t.indexOf('.');
+  if (dot < 0) return false;
+  const payload = t.slice(0, dot), sig = t.slice(dot + 1);
+  const expected = b64url(createHmac('sha256', signKey).update(payload).digest());
+  return safeEq(sig, expected);
+}
 
 function json(res: ServerResponse, code: number, body: unknown) {
   res.writeHead(code, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -156,8 +171,7 @@ export async function handleOAuth(
       json(res, 400, { error: 'invalid_grant', error_description: 'PKCE failed' });
       return true;
     }
-    const access_token = rand();
-    tokens.add(access_token);
+    const access_token = signToken();
     json(res, 200, { access_token, token_type: 'Bearer' });
     return true;
   }

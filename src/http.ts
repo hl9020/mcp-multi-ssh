@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { loadConfigFromEnv } from './utils/config.js';
 import { MCPSSHServer } from './server.js';
-import { handleOAuth, isValidToken } from './oauth.js';
+import { handleOAuth, isValidToken, initTokenSecret } from './oauth.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
@@ -14,6 +14,7 @@ if (!AUTH_TOKEN) { console.error('Fatal: MCP_AUTH_TOKEN env var required'); proc
 if (process.env.MCP_ENABLED === 'false') { console.error('Fatal: MCP_ENABLED=false'); process.exit(1); }
 
 const config = loadConfigFromEnv();
+initTokenSecret(AUTH_TOKEN);
 
 function baseUrlFrom(req: any): string {
   if (PUBLIC_URL) return PUBLIC_URL.replace(/\/$/, '');
