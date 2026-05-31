@@ -24,7 +24,7 @@ export class MCPSSHServer {
     this.pool = new SSHConnectionPool(config.ssh.defaultTimeout * 1000);
     this.server = new Server(
       { name: "mcp-multi-ssh", version: pkg.version },
-      { capabilities: { tools: {} } }
+      { capabilities: { tools: { listChanged: true } } }
     );
     this.setup();
   }
@@ -37,6 +37,14 @@ export class MCPSSHServer {
   }
 
   closePool() { this.pool.closeAll(); }
+
+  private toolsChangedTimer?: ReturnType<typeof setTimeout>;
+  private notifyToolsChanged(debounceMs = 500) {
+    if (this.toolsChangedTimer) clearTimeout(this.toolsChangedTimer);
+    this.toolsChangedTimer = setTimeout(() => {
+      this.server.sendToolListChanged().catch(() => {});
+    }, debounceMs);
+  }
 
   private setup() {
     const allTools = [
@@ -176,6 +184,7 @@ export class MCPSSHServer {
               throw new McpError(ErrorCode.InvalidRequest, `Connection '${connectionId}' already exists`);
             this.config.ssh.connections[connectionId] = connectionConfig;
             await saveConfig(this.config);
+            this.notifyToolsChanged();
             return { content: [{ type: "text", text: `Connection '${connectionId}' created.` }] };
           }
 
@@ -205,6 +214,7 @@ export class MCPSSHServer {
             await this.pool.close(connectionId);
             this.config.ssh.connections[connectionId] = connectionConfig;
             await saveConfig(this.config);
+            this.notifyToolsChanged();
             return { content: [{ type: "text", text: `Connection '${connectionId}' updated.` }] };
           }
 
@@ -215,6 +225,7 @@ export class MCPSSHServer {
             await this.pool.close(connectionId);
             delete this.config.ssh.connections[connectionId];
             await saveConfig(this.config);
+            this.notifyToolsChanged();
             return { content: [{ type: "text", text: `Connection '${connectionId}' deleted.` }] };
           }
 
