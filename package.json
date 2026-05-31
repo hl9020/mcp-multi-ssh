@@ -1,6 +1,6 @@
 {
   "name": "mcp-multi-ssh",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "MCP server for multi-host SSH connections - manage and execute commands on multiple remote servers",
   "type": "module",
   "repository": {
